@@ -9,17 +9,21 @@ const PORT = process.env.PORT || 3000;
 
 console.log("Initializing Sandra MCP Streamable-HTTP Server");
 
-// ---------------------------------------------------------
-// Load Marie Stopes Little Blue Book
-// ---------------------------------------------------------
+// =========================================================
+// LOAD MARIE STOPES LITTLE BLUE BOOK
+// =========================================================
 
 const bookPath = path.resolve(
   process.cwd(),
   "marie-stopes-little-blue-book.mcp.json"
 );
 
+console.log(`Loading Little Blue Book from: ${bookPath}`);
+
 if (!fs.existsSync(bookPath)) {
-  throw new Error(`Little Blue Book JSON not found: ${bookPath}`);
+  throw new Error(
+    `Little Blue Book JSON not found: ${bookPath}`
+  );
 }
 
 const littleBlueBook = JSON.parse(
@@ -39,12 +43,25 @@ if (!fullBookText) {
 }
 
 console.log(
-  `Little Blue Book loaded: ${fullBookText.length} characters`
+  `Little Blue Book loaded successfully: ${fullBookText.length} characters`
 );
 
-// ---------------------------------------------------------
-// Search Little Blue Book
-// ---------------------------------------------------------
+// =========================================================
+// PREPARE BOOK CHUNKS
+// =========================================================
+
+const bookChunks = fullBookText
+  .split(/\n(?=={3,})/)
+  .map((chunk: string) => chunk.trim())
+  .filter(Boolean);
+
+console.log(
+  `Little Blue Book indexed into ${bookChunks.length} chunks`
+);
+
+// =========================================================
+// SEARCH LITTLE BLUE BOOK
+// =========================================================
 
 function searchLittleBlueBook(
   query: string,
@@ -60,13 +77,7 @@ function searchLittleBlueBook(
     return [];
   }
 
-  // Split the book into reasonably useful chunks.
-  const chunks = fullBookText
-    .split(/\n(?=={3,})/)
-    .map((chunk: string) => chunk.trim())
-    .filter(Boolean);
-
-  const scoredResults = chunks.map((chunk: string) => {
+  const scoredResults = bookChunks.map((chunk: string) => {
     const normalizedChunk = chunk.toLowerCase();
 
     let score = 0;
@@ -87,7 +98,7 @@ function searchLittleBlueBook(
   });
 
   return scoredResults
-    .filter(result => result.score > 0)
+    .filter((result) => result.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) {
         return b.score - a.score;
@@ -103,63 +114,40 @@ function searchLittleBlueBook(
     }));
 }
 
-// ---------------------------------------------------------
-// Get section
-// ---------------------------------------------------------
+// =========================================================
+// GET LITTLE BLUE BOOK SECTION
+// =========================================================
 
 function getLittleBlueBookSection(section: string) {
   const normalizedSection = section
     .toLowerCase()
     .trim();
 
-  const chunks = fullBookText
-    .split(/\n(?=={3,})/)
-    .map((chunk: string) => chunk.trim())
-    .filter(Boolean);
+  if (!normalizedSection) {
+    return null;
+  }
 
-  const result = chunks.find(chunk =>
+  const result = bookChunks.find((chunk) =>
     chunk.toLowerCase().includes(normalizedSection)
   );
 
   return result || null;
 }
 
-// ---------------------------------------------------------
-// Sandra MCP Server
-// ---------------------------------------------------------
+// =========================================================
+// SANDRA MCP SERVER
+// =========================================================
 
 const servers = ExpressHttpStreamableMcpServer(
   {
     name: "sandra-mcp",
   },
 
-  server => {
+  (server) => {
 
-    // -----------------------------------------------------
-    // Session
-    // -----------------------------------------------------
-
-    server.tool(
-      "get_session",
-      "Gets the current Sandra MCP session context.",
-      {},
-      async (): Promise<CallToolResult> => {
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: "session",
-            },
-          ],
-        };
-
-      }
-    );
-
-    // -----------------------------------------------------
-    // Search Little Blue Book
-    // -----------------------------------------------------
+    // =====================================================
+    // SEARCH LITTLE BLUE BOOK
+    // =====================================================
 
     server.tool(
       "search_little_blue_book",
@@ -169,25 +157,13 @@ const servers = ExpressHttpStreamableMcpServer(
       {
         query: z
           .string()
-          .min(2)
           .describe(
             "The family planning question, topic, method, service, or concept to search for."
-          ),
-
-        max_results: z
-          .number()
-          .int()
-          .min(1)
-          .max(10)
-          .default(5)
-          .describe(
-            "Maximum number of relevant passages to return."
           ),
       },
 
       async ({
         query,
-        max_results,
       }): Promise<CallToolResult> => {
 
         console.log(
@@ -196,7 +172,7 @@ const servers = ExpressHttpStreamableMcpServer(
 
         const results = searchLittleBlueBook(
           query,
-          max_results
+          5
         );
 
         return {
@@ -205,8 +181,10 @@ const servers = ExpressHttpStreamableMcpServer(
               type: "text",
               text: JSON.stringify(
                 {
-                  source: "Marie Stopes International Little Blue Book",
+                  source:
+                    "Marie Stopes International Little Blue Book",
                   query,
+                  result_count: results.length,
                   results,
                 },
                 null,
@@ -215,13 +193,12 @@ const servers = ExpressHttpStreamableMcpServer(
             },
           ],
         };
-
       }
     );
 
-    // -----------------------------------------------------
-    // Get specific section
-    // -----------------------------------------------------
+    // =====================================================
+    // GET SECTION
+    // =====================================================
 
     server.tool(
       "get_section",
@@ -231,9 +208,8 @@ const servers = ExpressHttpStreamableMcpServer(
       {
         section: z
           .string()
-          .min(2)
           .describe(
-            "Section or topic to retrieve, for example: Contraception, Abortion, Our History, Quality, or Outreach."
+            "The section or topic to retrieve, for example Contraception, Abortion, Quality, Outreach, or History."
           ),
       },
 
@@ -284,9 +260,10 @@ const servers = ExpressHttpStreamableMcpServer(
             },
           ],
         };
-
       }
     );
 
   }
 );
+
+console.log("Sandra MCP server initialized.");
