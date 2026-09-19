@@ -31,7 +31,32 @@ const servers = ExpressHttpStreamableMcpServer(
           ],
         };
       }
-    );
+    ); 
+
+    server.tool(
+  'search_little_blue_book',
+  'Search the Marie Stopes International Little Blue Book for family planning information',
+  {
+    query: z.string().describe(
+      'The family planning question or topic to search for'
+    ),
+  },
+  async ({ query }): Promise<CallToolResult> => {
+    console.log(`Tool Called: search_little_blue_book (query=${query})`);
+
+    // Search your Little Blue Book content here
+    const results = searchLittleBlueBook(query);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(results),
+        },
+      ],
+    };
+  }
+);
 
 
     server.tool(
